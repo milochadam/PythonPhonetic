@@ -83,6 +83,19 @@ class Scraper:
     def scrape_data(self, word):
         return NotImplemented
 
+    def format_data(self, data, word_from_site):
+        if data.word.endswith("ed"):
+            if data.word[-1] in ("t", "d"):
+                return self.SCRAPED_DATA(word_from_site + "ed", data.phon_en + "id", data.phon_am + "id", data.website)
+            if data.word[-1] in ("p", "k", "f", "c", "x") or data.word[-2:] in ("GH", "CH", "SH", "SS"):
+                return self.SCRAPED_DATA(word_from_site + "ed", data.phon_en + "t", data.phon_am + "t", data.website)
+            if data.word[-1] in ("l", "n", "r", "g", "v", "s", "z", "b", "m"):
+                return self.SCRAPED_DATA(word_from_site + "ed", data.phon_en + "d", data.phon_am + "d", data.website)
+        elif data.word.endswith("s"):
+            return self.SCRAPED_DATA(word_from_site + "s", data.phon_en + "s", data.phon_am + "s", data.website)
+        elif data.word.endswith("ing"):
+            return self.SCRAPED_DATA(word_from_site + "in", data.phon_en + "in", data.phon_am + "in", data.website)
+
 
 class CambrScraper(Scraper):
     WEBSITE = "https://dictionary.cambridge.org/pl/dictionary/english/"
@@ -95,20 +108,11 @@ class CambrScraper(Scraper):
         word_from_site = soup.find('div', class_='pos-header dpos-h').find('span', class_='hw dhw').text
         phon_en = soup.find('span', class_='uk dpron-i').find('span', class_='ipa dipa lpr-2 lpl-1').text
         phon_am = soup.find('span', class_='us dpron-i').find('span', class_='ipa dipa lpr-2 lpl-1').text
-        if word.lower() == word_from_site or word == word_from_site:
+        if word == word_from_site:
             return self.SCRAPED_DATA(word, phon_en, phon_am, website)
         else:
-            if word.endswith("ed"):
-                if word[-1] in ("t", "d"):
-                    return self.SCRAPED_DATA(word_from_site + "ed", phon_en + "id", phon_am + "id", website)
-                if word[-1] in ("p", "k", "f", "c", "x") or word[-2:] in ("GH", "CH", "SH", "SS"):
-                    return self.SCRAPED_DATA(word_from_site + "ed", phon_en + "t", phon_am + "t", website)
-                if word[-1] in ("l", "n", "r", "g", "v", "s", "z", "b", "m"):
-                    return self.SCRAPED_DATA(word_from_site + "ed", phon_en + "d", phon_am + "d", website)
-            elif word.endswith("s"):
-                return self.SCRAPED_DATA(word_from_site + "s", phon_en + "s", phon_am + "s", website)
-            elif word.endswith("ing"):
-                return self.SCRAPED_DATA(word_from_site + "in", phon_en + "in", phon_am + "in", website)
+            formated_data = self.format_data(self.SCRAPED_DATA(word, phon_en, phon_am, website), word_from_site)
+            return formated_data
 
 
 class OxfordScraper(Scraper):
@@ -120,23 +124,20 @@ class OxfordScraper(Scraper):
         request = requests.get(website).text
         soup = BeautifulSoup(request, 'lxml')
         word_from_site = soup.find('div', class_='top-container').find('h1', class_='headword').text
-        phon_en = soup.find('div', class_='phons_br').find('span', class_='phon').text
-        phon_am = soup.find('div', class_='phons_n_am').find('span', class_='phon').text
+        try:
+            phon_en = soup.find('div', class_='phons_br').find('span', class_='phon').text
+        except AttributeError:
+            phon_en = soup.find('div', class_='phons_n_am').find('span', class_='phon').text
+        try:
+            phon_am = soup.find('div', class_='phons_n_am').find('span', class_='phon').text
+        except AttributeError:
+            phon_am = soup.find('div', class_='phons_br').find('span', class_='phon').text
         print(word == word_from_site)
         if word == word_from_site:
             return self.SCRAPED_DATA(word, phon_en, phon_am, website)
         else:
-            if word.endswith("ed"):
-                if word[-1] in ("t", "d"):
-                    return self.SCRAPED_DATA(word_from_site + "ed", phon_en + "id", phon_am + "id", website)
-                if word[-1] in ("p", "k", "f", "c", "x") or word[-2:] in ("GH", "CH", "SH", "SS"):
-                    return self.SCRAPED_DATA(word_from_site + "ed", phon_en + "t", phon_am + "t", website)
-                if word[-1] in ("l", "n", "r", "g", "v", "s", "z", "b", "m"):
-                    return self.SCRAPED_DATA(word_from_site + "ed", phon_en + "d", phon_am + "d", website)
-            elif word.endswith("s"):
-                return self.SCRAPED_DATA(word_from_site + "s", phon_en + "s", phon_am + "s", website)
-            elif word.endswith("ing"):
-                return self.SCRAPED_DATA(word_from_site + "in", phon_en + "in", phon_am + "in", website)
+            formated_data = self.format_data(self.SCRAPED_DATA(word, phon_en, phon_am, website), word_from_site)
+            return formated_data
 
 
 class PhoneticScraprer:
@@ -149,18 +150,23 @@ class PhoneticScraprer:
         self.language: str = language
         self.sentence: list = [word.strip(",") for word in sentence.split()]
         self.scraper = self.SCRAPERS[scraper]()
-        self.databse: Database = Database()
+        self.database: Database = Database()
 
     def execute(self):
+        try:
+            self.database.create_database()
+        except sqlite3.OperationalError:
+            pass
         sentence = ""
         for word in self.sentence:
             try:
-                if not self.databse.is_in_database(word):
-                    data = self.scraper.scrape_data(word)
-                    self.databse.update_database(data)
-                    sentence += colored(self.databse.take_from_database(self.language, word), "yellow") + " "
+                if not self.database.is_in_database(word.lower()):
+                    data = self.scraper.scrape_data(word.lower())
+                    print(data)
+                    self.database.update_database(data)
+                    sentence += colored(self.database.take_from_database(self.language, word.lower()), "yellow") + " "
                 else:
-                    sentence += colored(self.databse.take_from_database(self.language, word), "green") + " "
+                    sentence += colored(self.database.take_from_database(self.language, word.lower()), "green") + " "
             except AttributeError:
                 sentence += colored(word, "red") + " "
         return sentence
@@ -179,3 +185,4 @@ args = parser.parse_args()
 if __name__ == "__main__":
     p = PhoneticScraprer(sentence=' '.join(args.sentence), language=args.language, scraper=args.scraper)
     print(p.execute())
+
