@@ -1,18 +1,21 @@
 #!/usr/bin/env python
 
 import sqlite3
-from bs4 import BeautifulSoup
 import requests
+import argparse
+from settings import DATABASE_NAME, DATABASE_PATH
 from collections import namedtuple
 from termcolor import colored
-import argparse
+from bs4 import BeautifulSoup
 
 
 class Database:
-    NAME = "phonetic"
+    def __init__(self, name: str, path: str):
+        self.name: str = name
+        self.path: str = path
 
     def create_database(self):
-        with sqlite3.connect(self.NAME) as connection:
+        with sqlite3.connect(self.path) as connection:
             cursor = connection.cursor()
             cursor.execute('''
                 CREATE TABLE phonetic (
@@ -24,7 +27,7 @@ class Database:
             );''')
 
     def is_in_database(self, word) -> bool:
-        with sqlite3.connect(self.NAME) as connection:
+        with sqlite3.connect(self.path) as connection:
             cursor = connection.cursor()
             cursor.execute('''SELECT * FROM phonetic WHERE word = "{}"'''.format(word))
             if cursor.fetchone():
@@ -32,38 +35,38 @@ class Database:
             return False
 
     def update_database(self, data) -> None:
-        with sqlite3.connect(self.NAME) as connection:
+        with sqlite3.connect(self.path) as connection:
             cursor = connection.cursor()
             cursor.execute('''INSERT INTO phonetic VALUES (NULL, "{}", "{}", "{}", "{}")'''.format(
                 data.word, data.phon_en, data.phon_am, data.website)
             )
 
     def drop_table(self):
-        with sqlite3.connect(self.NAME) as connection:
+        with sqlite3.connect(self.path) as connection:
             cursor = connection.cursor()
-            cursor.execute('''DROP TABLE {}'''.format(self.NAME))
+            cursor.execute('''DROP TABLE {}'''.format(self.name))
 
     def select_all(self) -> list:
-        with sqlite3.connect(self.NAME) as connection:
+        with sqlite3.connect(self.path) as connection:
             cursor = connection.cursor()
             return cursor.execute('''SELECT * FROM phonetic''').fetchall()
 
     def take_from_database(self, language, word) -> str:
-        with sqlite3.connect(self.NAME) as connection:
+        with sqlite3.connect(self.path) as connection:
             cursor = connection.cursor()
             cursor.execute('''SELECT phon_{} FROM {} WHERE word = "{}"
-            '''.format(language, self.NAME, word))
+            '''.format(language, self.name, word))
             return cursor.fetchone()[0]
 
     def delete(self, word):
-        with sqlite3.connect(self.NAME) as connection:
+        with sqlite3.connect(self.path) as connection:
             cursor = connection.cursor()
-            cursor.execute('''DELETE FROM {};'''.format(self.NAME, word))
+            cursor.execute('''DELETE FROM {};'''.format(self.name, word))
 
     def describe(self):
-        with sqlite3.connect(self.NAME) as connection:
+        with sqlite3.connect(self.path) as connection:
             cursor = connection.cursor()
-            return cursor.execute('''PRAGMA table_info({})'''.format(self.NAME))
+            return cursor.execute('''PRAGMA table_info({})'''.format(self.name))
 
     @staticmethod
     def insert_own(word) -> None:
@@ -106,8 +109,14 @@ class CambrScraper(Scraper):
         request = requests.get(website).text
         soup = BeautifulSoup(request, 'lxml')
         word_from_site = soup.find('div', class_='pos-header dpos-h').find('span', class_='hw dhw').text
-        phon_en = soup.find('span', class_='uk dpron-i').find('span', class_='ipa dipa lpr-2 lpl-1').text
-        phon_am = soup.find('span', class_='us dpron-i').find('span', class_='ipa dipa lpr-2 lpl-1').text
+        try:
+            phon_en = soup.find('span', class_='uk dpron-i').find('span', class_='ipa dipa lpr-2 lpl-1').text
+        except AttributeError:
+            phon_en = soup.find('span', class_='us dpron-i').find('span', class_='ipa dipa lpr-2 lpl-1').text
+        try:
+            phon_am = soup.find('span', class_='us dpron-i').find('span', class_='ipa dipa lpr-2 lpl-1').text
+        except AttributeError:
+            phon_am = soup.find('span', class_='uk dpron-i').find('span', class_='ipa dipa lpr-2 lpl-1').text
         if word == word_from_site:
             return self.SCRAPED_DATA(word, phon_en, phon_am, website)
         else:
@@ -132,7 +141,6 @@ class OxfordScraper(Scraper):
             phon_am = soup.find('div', class_='phons_n_am').find('span', class_='phon').text
         except AttributeError:
             phon_am = soup.find('div', class_='phons_br').find('span', class_='phon').text
-        print(word == word_from_site)
         if word == word_from_site:
             return self.SCRAPED_DATA(word, phon_en, phon_am, website)
         else:
@@ -150,7 +158,7 @@ class PhoneticScraprer:
         self.language: str = language
         self.sentence: list = [word.strip(",") for word in sentence.split()]
         self.scraper = self.SCRAPERS[scraper]()
-        self.database: Database = Database()
+        self.database: Database = Database(name=DATABASE_NAME, path=DATABASE_PATH)
 
     def execute(self):
         try:
@@ -162,7 +170,6 @@ class PhoneticScraprer:
             try:
                 if not self.database.is_in_database(word.lower()):
                     data = self.scraper.scrape_data(word.lower())
-                    print(data)
                     self.database.update_database(data)
                     sentence += colored(self.database.take_from_database(self.language, word.lower()), "yellow") + " "
                 else:
@@ -185,4 +192,3 @@ args = parser.parse_args()
 if __name__ == "__main__":
     p = PhoneticScraprer(sentence=' '.join(args.sentence), language=args.language, scraper=args.scraper)
     print(p.execute())
-
