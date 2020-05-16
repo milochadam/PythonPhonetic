@@ -2,4 +2,4 @@ venv
 *.pyc
 .metadata
 .idea
-phonetic
+*.sqlite3
