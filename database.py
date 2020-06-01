@@ -1,8 +1,10 @@
 import sqlite3
 
+from settings import DATABASE_PATH, DATABASE_NAME
+
 
 class Database:
-    def __init__(self, name: str, path: str):
+    def __init__(self, name: str = DATABASE_NAME, path: str = DATABASE_PATH):
         self.name: str = name
         self.path: str = path
 
@@ -41,7 +43,7 @@ class Database:
     def select_all(self) -> list:
         with sqlite3.connect(self.path) as connection:
             cursor = connection.cursor()
-            return cursor.execute('''SELECT * FROM phonetic''').fetchall()
+            return cursor.execute('''SELECT * FROM {}'''.format(self.name)).fetchall()
 
     def take_from_database(self, language, word) -> str:
         with sqlite3.connect(self.path) as connection:
@@ -60,12 +62,12 @@ class Database:
             cursor = connection.cursor()
             return cursor.execute('''PRAGMA table_info({})'''.format(self.name))
 
-    @staticmethod
-    def insert_own(word) -> None:
-        website = "user_input"
-        phon_en = input("Wprowdź angelski zapis fonetyczny słowa.\n")
-        phon_am = input("Wprowdź amerykański zapis fonetyczny słowa.\n")
-        with sqlite3.connect('phonetic') as connection:
+    def insert_own(self, word, phon_en=None, phon_am=None) -> None:
+        with sqlite3.connect(self.path) as connection:
             cursor = connection.cursor()
-            cursor.execute('''INSERT INTO phonetic VALUES (NULL, "{}", "{}", "{}", "{}")'''.format(
-                word, phon_en, phon_am, website))
+            cursor.execute('''INSERT INTO {} VALUES (NULL, "{}", "{}", "{}", "NULL")'''.format(
+                self.name,
+                word,
+                "NULL" if phon_en is None else phon_en,
+                "NULL" if phon_am is None else phon_am)
+            )

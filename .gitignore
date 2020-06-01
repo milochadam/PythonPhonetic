@@ -3,3 +3,4 @@ venv
 .metadata
 .idea
 *.sqlite3
+.project
